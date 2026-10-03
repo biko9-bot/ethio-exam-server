@@ -1,0 +1,15 @@
+{
+  "name": "ethio-exam-server",
+  "version": "1.0.0",
+  "description": "Backend API for the Ethio Ministry Exam app (auth, subscriptions, payments, content).",
+  "private": true,
+  "type": "commonjs",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node src/server.js",
+    "import": "node scripts/import-content.js",
+    "test": "node test/smoke.test.js",
+    "backup": "node scripts/backup.js"
+  },
+  "dependencies": {}
+}

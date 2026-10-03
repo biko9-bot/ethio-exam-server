@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin – Ethio Ministry Exam</title>
+<style>
+:root{--ink:#14213d;--bg:#f4f6fa;--line:#dde2ec;--green:#1a8f4b;--red:#c0392b;--amber:#b9770e}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--ink);color:#fff;padding:12px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}header h1{font-size:17px;margin:0;flex:1}
+nav button{background:transparent;color:#cfd8ee;border:0;padding:8px 12px;border-radius:8px;cursor:pointer;font:inherit}nav button.on{background:#2c3e68;color:#fff}
+main{max-width:1000px;margin:0 auto;padding:18px}.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.stat b{display:block;font-size:24px}
+button,input,select{font:inherit}.btn{border:0;border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:600;color:#fff;background:var(--ink)}.btn.g{background:var(--green)}.btn.r{background:var(--red)}.btn.l{background:#e8ecf5;color:var(--ink)}
+input,select{padding:9px;border:1px solid var(--line);border-radius:8px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.grow{flex:1}.tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700;background:#e8ecf5}
+.tag.pending{background:#fff3d6;color:var(--amber)}.tag.approved{background:#e3f6ea;color:var(--green)}.tag.rejected{background:#fbe6e3;color:var(--red)}.flag{color:var(--red);font-weight:700}
+.opt{display:block;width:100%;text-align:left;margin:4px 0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}.opt.sel{border-color:var(--green);background:#e3f6ea}
+#login{max-width:340px;margin:12vh auto}#login input{width:100%;margin:6px 0}#shot{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;padding:20px}#shot img{max-width:100%;max-height:100%;border-radius:8px}small{color:#667}
+</style></head><body>
+<div id="app"></div><div id="shot"></div>
+<script>
+const $ = s => document.querySelector(s);
+const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === 'class') e.className = v; else if (k.startsWith('on')) e[k] = v; else if (v !== false && v != null) e.setAttribute(k, v); } for (const c of kids.flat()) e.append(c instanceof Node ? c : document.createTextNode(c == null ? '' : String(c))); return e; };
+let token = sessionStorage.getItem('admin_token') || '', tab = 'payments';
+
+async function api(method, url, body) {
+  const res = await fetch(url, { method, headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), Authorization: 'Bearer ' + token }, body: body ? JSON.stringify(body) : undefined });
+  if (res.status === 401) { sessionStorage.removeItem('admin_token'); token = ''; render(); throw new Error('Please log in again.'); }
+  const type = res.headers.get('content-type') || '';
+  const data = type.includes('json') ? await res.json() : await res.blob();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+const toast = m => alert(m);
+
+function render() {
+  const app = $('#app'); app.replaceChildren();
+  if (!token) return app.append(loginView());
+  app.append(el('header', {}, el('h1', {}, 'Ethio Ministry Exam — Admin'),
+    el('nav', {}, ...[['payments', 'Payments'], ['users', 'Students'], ['answers', 'Answers to verify'], ['stats', 'Overview']].map(([id, label]) => el('button', { class: tab === id ? 'on' : '', onclick: () => { tab = id; render(); } }, label))),
+    el('button', { class: 'btn l', onclick: () => { sessionStorage.removeItem('admin_token'); token = ''; render(); } }, 'Log out')));
+  const main = el('main'); app.append(main);
+  ({ payments: paymentsView, users: usersView, answers: answersView, stats: statsView }[tab])(main).catch(e => main.append(el('p', { class: 'flag' }, e.message)));
+}
+
+function loginView() {
+  const phone = el('input', { placeholder: 'Admin phone', autocomplete: 'username' }), pass = el('input', { type: 'password', placeholder: 'Password', autocomplete: 'current-password' }), err = el('p', { class: 'flag' });
+  const go = async () => { try { const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phone.value, password: pass.value }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error); if (d.user.role !== 'admin') throw new Error('This account is not an admin.'); token = d.token; sessionStorage.setItem('admin_token', token); render(); } catch (e) { err.textContent = e.message; } };
+  pass.onkeydown = e => { if (e.key === 'Enter') go(); };
+  return el('div', { id: 'login', class: 'card' }, el('h2', {}, 'Admin login'), phone, pass, el('button', { class: 'btn', onclick: go }, 'Log in'), err);
+}
+
+async function statsView(main) {
+  const s = await api('GET', '/api/admin/stats');
+  main.append(el('div', { class: 'stats' }, ...[['Students', s.users], ['Active subscribers', s.premiumUsers], ['Payments waiting', s.pendingPayments], ['Approved revenue (ETB)', s.approvedRevenueETB], ['Questions', s.questions], ['Answers to verify', s.unverifiedAnswers]].map(([l, v]) => el('div', { class: 'card stat' }, el('b', {}, v), el('small', {}, l)))));
+}
+
+async function paymentsView(main) {
+  let status = 'pending';
+  const list = el('div');
+  const filter = el('select', { onchange: e => { status = e.target.value; load(); } }, ...['pending', 'approved', 'rejected', 'all'].map(v => el('option', { value: v }, v)));
+  main.append(el('div', { class: 'row card' }, el('b', {}, 'Show'), filter), list);
+  async function load() {
+    const { payments } = await api('GET', '/api/admin/payments' + (status === 'all' ? '' : '?status=' + status));
+    list.replaceChildren(...(payments.length ? payments.map(p => el('div', { class: 'card' },
+      el('div', { class: 'row' }, el('b', { class: 'grow' }, `${p.first_name} ${p.last_name} · ${p.phone}`), el('span', { class: 'tag ' + p.status }, p.status)),
+      el('div', {}, `${p.plan === 'both' ? 'Both grades' : 'Grade ' + p.plan} · ${p.amount} ETB · ${p.method.toUpperCase()}${p.reference ? ' · ref ' + p.reference : ''}`),
+      el('small', {}, new Date(p.created_at).toLocaleString()), p.flag ? el('div', { class: 'flag' }, '⚠ ' + p.flag.replace(/_/g, ' ')) : '', p.note ? el('div', {}, 'Note: ' + p.note) : '',
+      el('div', { class: 'row', style: 'margin-top:8px' },
+        el('button', { class: 'btn l', onclick: async () => { const blob = await api('GET', `/api/admin/payments/${p.id}/screenshot`); const box = $('#shot'); box.replaceChildren(el('img', { src: URL.createObjectURL(blob) })); box.style.display = 'flex'; box.onclick = () => { box.style.display = 'none'; }; } }, 'View receipt'),
+        p.status === 'pending' ? [el('button', { class: 'btn g', onclick: async () => { if (confirm(`Approve ${p.amount} ETB from ${p.phone}?`)) { await api('POST', `/api/admin/payments/${p.id}/approve`, {}).catch(e => toast(e.message)); load(); } } }, 'Approve'),
+          el('button', { class: 'btn r', onclick: async () => { const note = prompt('Reason for rejecting (the student will see it):', 'Payment not found'); if (note !== null) { await api('POST', `/api/admin/payments/${p.id}/reject`, { note }).catch(e => toast(e.message)); load(); } } }, 'Reject')] : '')
+    )) : [el('p', {}, 'Nothing here.')]));
+  }
+  await load();
+}
+
+async function usersView(main) {
+  const list = el('div'); const q = el('input', { placeholder: 'Search phone or name', class: 'grow' });
+  main.append(el('div', { class: 'row card' }, q, el('button', { class: 'btn', onclick: load }, 'Search')), list);
+  async function load() {
+    const { users } = await api('GET', '/api/admin/users?q=' + encodeURIComponent(q.value));
+    list.replaceChildren(...users.map(u => { const fmt = g => u.premium[g].active ? 'until ' + new Date(u.premium[g].expiry).toLocaleDateString() : 'free';
+      return el('div', { class: 'card' }, el('div', { class: 'row' }, el('b', { class: 'grow' }, `${u.first_name} ${u.last_name} · ${u.phone}`), el('span', { class: 'tag' }, u.role)),
+        el('small', {}, `Grade 6: ${fmt('6')} · Grade 8: ${fmt('8')} · joined ${new Date(u.created_at).toLocaleDateString()}`),
+        el('div', { class: 'row', style: 'margin-top:8px' }, ...['6', '8', 'both'].map(g => el('button', { class: 'btn l', onclick: async () => { const d = prompt('Days to add:', '365'); if (d) { await api('POST', `/api/admin/users/${u.id}/premium`, { grade: g, days: Number(d) }).catch(e => toast(e.message)); load(); } } }, '+ ' + (g === 'both' ? 'Both grades' : 'Grade ' + g))),
+          el('button', { class: 'btn r', onclick: async () => { if (confirm('Remove premium for both grades?')) { await api('POST', `/api/admin/users/${u.id}/premium`, { grade: 'both', revoke: true }); load(); } } }, 'Revoke')));
+    }));
+  }
+  await load();
+}
+
+async function answersView(main) {
+  const list = el('div'); let page = 1;
+  main.append(el('p', {}, 'Questions whose correct answer is not set yet. Click the correct option to save it.'), list);
+  async function load() {
+    const { questions, total } = await api('GET', `/api/admin/questions?unverified=1&pageSize=20&page=${page}`);
+    list.replaceChildren(el('small', {}, `${total} question(s) need an answer`), ...questions.map(q => el('div', { class: 'card' },
+      el('small', {}, `#${q.id} · ${q.subject} · Grade ${q.grade} · ${q.year} · ${q.chapter}`), q.passage ? el('details', {}, el('summary', {}, 'Passage'), el('div', { style: 'white-space:pre-wrap' }, q.passage)) : '',
+      el('p', {}, el('b', {}, q.q)),
+      ...q.options.map((o, i) => el('button', { class: 'opt', onclick: async () => { await api('PUT', `/api/admin/questions/${q.id}`, { answer: i }).catch(e => toast(e.message)); load(); } }, `${'ABCDEF'[i]}. ${o}`)))),
+      el('div', { class: 'row' }, page > 1 ? el('button', { class: 'btn l', onclick: () => { page--; load(); } }, '← Previous') : '', total > page * 20 ? el('button', { class: 'btn l', onclick: () => { page++; load(); } }, 'Next →') : ''));
+  }
+  await load();
+}
+render();
+</script></body></html>

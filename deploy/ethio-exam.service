@@ -1,0 +1,19 @@
+# /etc/systemd/system/ethio-exam.service
+[Unit]
+Description=Ethio Ministry Exam API
+After=network.target
+
+[Service]
+Type=simple
+User=ethio
+WorkingDirectory=/opt/ethio-exam-server
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/opt/ethio-exam-server
+
+[Install]
+WantedBy=multi-user.target
